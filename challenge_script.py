@@ -1,17 +1,12 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics import classification_report
 from sklearn.svm import SVC
 from sklearn.naive_bayes import *
-from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis as QDA
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
-from sklearn.linear_model import LogisticRegression as LR
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import LabelEncoder
-from scipy import stats
 import tensorflow as tf
 import keras
 from keras import optimizers
@@ -37,7 +32,7 @@ def clean_data(data: pd.DataFrame):
     encoded_col = le.fit_transform(features['x7'])
     features['x7'] = encoded_col
     features = features.fillna(0)
-    labels = labels.fillna(0)
+    labels = labels.fillna('Atsutobob')
     labels.replace('Bobborg', 'Boborg',inplace=True)
     labels.replace('Jorggsuto', 'Jorgsuto', inplace=True)
     labels.replace('Atsutoob', 'Atsutobob', inplace=True)
@@ -45,6 +40,13 @@ def clean_data(data: pd.DataFrame):
     labels.replace('Jorgsuto', 1, inplace=True)
     labels.replace('Atsutobob',2, inplace=True)
     return features, labels, len(data.index)
+
+def handle_data(datadir, training_set, test_set):
+    training_data = import_data(datadir+training_set)
+    test_data = import_data(datadir+test_set)
+    features, labels, N = clean_data(training_data) # clean data
+    pca_features = compute_PCA(features)            # compute PCA 
+    return pca_features, labels, N, test_data
 
 def compute_PCA(data):
     std_scaler = StandardScaler()
@@ -90,22 +92,18 @@ def ann_routine(features, labels, K1, K2, K3, a1, a2, a3, k1_init, k2_init, k3_i
                      epochs=epochs,
                      verbose=0)
     '''
-    history = None
-    return model, history
+    return model
 
 def svm_routine(train_features, train_labels, 
                 test_features, 
                 kernel, parameter, coef0):
     
-    # --- kernel choice ---
-    if kernel == 'linear':
-        svm_model = SVC(kernel=kernel)
-    if kernel == 'poly': 
-        svm_model = SVC(kernel=kernel, gamma = parameter, coef0 = coef0)
-    else:
-        svm_model = SVC(kernel=kernel, gamma = parameter)
+    # --- kernel choice --- #
+    if kernel == 'linear': svm_model = SVC(kernel=kernel)
+    if kernel == 'poly': svm_model = SVC(kernel=kernel, gamma = parameter, coef0 = coef0)
+    else: svm_model = SVC(kernel=kernel, gamma = parameter)
     
-    # --- fit data and predict --- 
+    # --- fit data and predict --- #
     svm_model.fit(train_features, train_labels)
     predicted_labels = svm_model.predict(test_features)
 
@@ -126,12 +124,7 @@ if __name__ == '__main__':
     datadir = '/Users/danvicente/Datalogi/DD2421 - Maskininlärning/programming challenge/'
     training_set = 'TrainOnMe.csv'
     test_set ='EvaluateOnMe.csv'
-    training_data = import_data(datadir+training_set)
-    test_data = import_data(datadir+test_set)
-    features, labels, N = clean_data(training_data) # clean data
-    pca_features = compute_PCA(features)            # compute PCA 
-    std = StandardScaler()
-    norm_features = std.fit_transform(features)
+    pca_features, labels, N, test_data = handle_data(datadir, training_set, test_set)
 
     # --- Visualize classes --- #
     print('================ Class distribution ==================')
@@ -144,25 +137,16 @@ if __name__ == '__main__':
     # --- Hyperparameters --- #
     
     # NN
-    K1 = 40
-    K2 = 25 
-    K3 = 30
-    a1 = 'relu'
-    a2 = 'tanh'
-    a3 = 'sigmoid'
-    k1_init = 'random_uniform'
-    k2_init = 'random_uniform'
-    k3_init = 'random_uniform'
-    epochs = 100
-    NBatch = 1
-    learning_rate = 0.001
+    K1 = 40; K2 = 25; K3 = 30
+    a1 = 'relu'; a2 = 'tanh'; a3 = 'sigmoid'
+    k1_init = 'random_uniform'; k2_init = 'random_uniform'; k3_init = 'random_uniform'
+    epochs = 100; NBatch = 1; learning_rate = 0.001
     opt = optimizers.Adamax()
     
     # SVM
-    kernel = 'rbf'
-    gamma = 0.2
+    kernel = 'rbf'; gamma = 0.2
 
-    model, history = ann_routine(pca_features, labels, K1=K1, K2=K2, K3=K3, a1=a1, a2=a2, a3=a3,
+    model = ann_routine(pca_features, labels, K1=K1, K2=K2, K3=K3, a1=a1, a2=a2, a3=a3,
                             k1_init=k1_init, k2_init=k2_init, k3_init=k3_init,
                             opt=opt, Nbatch=NBatch, epochs=epochs)
     
@@ -178,9 +162,16 @@ if __name__ == '__main__':
         y_pred = model.predict(pca_features[test_indices])
         accuracy = compute_accuracy(np.argmax(y_pred, axis=1), labels[test_indices])
         acc.append(accuracy)
-
     print(f'Accuracy of ANN: {np.mean(acc)}')
 
     # --- Train model --- #   
-
+    ann_model = ann_routine(pca_features, labels, K1=K1, K2=K2, K3=K3, a1=a1, a2=a2, a3=a3,
+                            k1_init=k1_init, k2_init=k2_init, k3_init=k3_init,
+                            opt=opt, Nbatch=NBatch, epochs=epochs)
+    ann_model.fit(pca_features, labels, to_categorical(labels[train_indices], num_classes=3),
+                  batch_size=NBatch, verbose=1)
+    
     # --- Predict --- #
+
+    #TODO: NEED TO HANDLE THE test-data as well. 
+    ann_model.predict(test_data)
