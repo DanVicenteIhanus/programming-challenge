@@ -54,13 +54,6 @@ def compute_PCA(data):
     
     return pca_data
 
-def remove_outliers(data: pd.DataFrame, ZSCORE_THREASHOLD: int = 4) -> pd.DataFrame:
-    zscore = np.abs(stats.zscore(data.select_dtypes(include=["float", "int"])))
-    is_inlier = ~ (zscore > ZSCORE_THREASHOLD).any(axis=1)
-    data = data[is_inlier]
-    return data
-
-
 '''
 ------------------------------------
 TODO: Pick some other model (NN?)
@@ -78,6 +71,7 @@ def ann_routine(features, labels, K1, K2, K3, a1, a2, a3, k1_init, k2_init, k3_i
     Z2 = keras.layers.Dense(units=K2, activation=a2, use_bias=True,
                             kernel_initializer=k2_init,
                             bias_initializer='zeros',
+                            kernel_regularizer=tf.keras.regularizers.L2(0.001),
                             name='hidden_layer_2')
     Z3 = keras.layers.Dense(units=K3, activation=a3, use_bias=False,
                             kernel_initializer=k3_init,
@@ -86,17 +80,17 @@ def ann_routine(features, labels, K1, K2, K3, a1, a2, a3, k1_init, k2_init, k3_i
     output_layer = keras.layers.Dense(units=3, 
                                       activation='softmax',
                                         name='output_layer')
-    model = keras.models.Sequential([input_layer, Z1,d, Z2, d, Z3, output_layer])
+    model = keras.models.Sequential([input_layer, Z1,d, Z2, d, Z3, d, output_layer])
     model.compile(optimizer=opt, 
                   loss='categorical_crossentropy',
                     metrics=['accuracy', 'categorical_crossentropy',
                              keras.metrics.Precision()])
-    
+    '''
     history = model.fit(x=features, y=one_hot_labels, batch_size=Nbatch,
                      epochs=epochs,
-                     validation_split=0.3,
-                     verbose=1)
-    
+                     verbose=0)
+    '''
+    history = None
     return model, history
 
 def svm_routine(train_features, train_labels, 
@@ -136,7 +130,9 @@ if __name__ == '__main__':
     test_data = import_data(datadir+test_set)
     features, labels, N = clean_data(training_data) # clean data
     pca_features = compute_PCA(features)            # compute PCA 
-    
+    std = StandardScaler()
+    norm_features = std.fit_transform(features)
+
     # --- Visualize classes --- #
     print('================ Class distribution ==================')
     classes = labels.unique()
@@ -148,32 +144,43 @@ if __name__ == '__main__':
     # --- Hyperparameters --- #
     
     # NN
-    K1 = 50
-    K2 = 15 
+    K1 = 40
+    K2 = 25 
     K3 = 30
     a1 = 'relu'
     a2 = 'tanh'
     a3 = 'sigmoid'
     k1_init = 'random_uniform'
-    k2_init = 'random_normal'
-    k3_init = 'random_normal'
-    epochs = 50
+    k2_init = 'random_uniform'
+    k3_init = 'random_uniform'
+    epochs = 100
     NBatch = 1
     learning_rate = 0.001
-    opt = optimizers.Adamax(learning_rate=learning_rate)
+    opt = optimizers.Adamax()
     
     # SVM
     kernel = 'rbf'
     gamma = 0.2
 
-    # --- train models --- #
-    '''
-    model, history = ann_routine(pca_features, labels, K1=K1,
-                 K2=K2, K3=K3, a1=a1, a2=a2,a3=a3,
-                 k1_init=k1_init, k2_init=k2_init, k3_init=k3_init,
-                 opt=opt, Nbatch=NBatch, epochs=epochs)
-    '''
+    model, history = ann_routine(pca_features, labels, K1=K1, K2=K2, K3=K3, a1=a1, a2=a2, a3=a3,
+                            k1_init=k1_init, k2_init=k2_init, k3_init=k3_init,
+                            opt=opt, Nbatch=NBatch, epochs=epochs)
     
+    # --- 10-fold cross validation --- #
     skf = StratifiedKFold(n_splits = 10, shuffle=True)
     cv_svm = cross_val_score(SVC(kernel=kernel, gamma=gamma), X=pca_features, y=labels, cv=skf, verbose=1)
-    print(f'Accuracy of SVM: {np.mean(cv_svm)}')
+    print(f'Accuracy of SVM: {np.mean(cv_svm)}') 
+
+    acc = []
+    for train_indices, test_indices in skf.split(pca_features, labels):
+        model.fit(pca_features[train_indices], to_categorical(labels[train_indices], num_classes=3),
+              batch_size=NBatch, epochs=epochs, verbose=0)
+        y_pred = model.predict(pca_features[test_indices])
+        accuracy = compute_accuracy(np.argmax(y_pred, axis=1), labels[test_indices])
+        acc.append(accuracy)
+
+    print(f'Accuracy of ANN: {np.mean(acc)}')
+
+    # --- Train model --- #   
+
+    # --- Predict --- #
