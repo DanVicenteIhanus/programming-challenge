@@ -131,21 +131,6 @@ def ann_routine(features, labels, K1, K2, K3, a1, a2, a3, k1_init, k2_init, k3_i
     '''
     return model
 
-def svm_routine(train_features, train_labels, 
-                test_features, 
-                kernel, parameter, coef0):
-    
-    # --- kernel choice --- #
-    if kernel == 'linear': svm_model = SVC(kernel=kernel)
-    if kernel == 'poly': svm_model = SVC(kernel=kernel, gamma = parameter, coef0 = coef0)
-    else: svm_model = SVC(kernel=kernel, gamma = parameter)
-    
-    # --- fit data and predict --- #
-    svm_model.fit(train_features, train_labels)
-    predicted_labels = svm_model.predict(test_features)
-    
-    return predicted_labels
-
 def compute_accuracy(predicted, true):
     return np.mean(true == predicted)
 
