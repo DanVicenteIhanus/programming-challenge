@@ -11,7 +11,8 @@ import tensorflow as tf
 import keras
 from keras import optimizers
 from keras.utils import to_categorical
-
+from matplotlib import pyplot as plt
+from scipy.stats import entropy
 
 '''
 ------------------------------------
@@ -22,50 +23,77 @@ Handle data
 def import_data(datadir):
     return pd.read_csv(datadir, index_col=[0])
 
-def clean_data(data: pd.DataFrame):
+def clean_data(data: pd.DataFrame, training: bool):
     data.drop_duplicates(inplace=True)
-    data = data[data.y != ' arkitekt']
-
-    features = data.drop(['y', 'x12'], axis=1)
-    labels = data['y']
+    if training:
+        data = data[data.y != ' arkitekt']
+        features = data.drop(['y'], axis=1)
+        labels = data['y']
+        labels = labels.fillna('Atsutobob')
+        labels.replace('Bobborg', 'Boborg',inplace=True)
+        labels.replace('Jorggsuto', 'Jorgsuto', inplace=True)
+        labels.replace('Atsutoob', 'Atsutobob', inplace=True)
+        labels.replace('Boborg', 0, inplace=True)
+        labels.replace('Jorgsuto', 1, inplace=True)
+        labels.replace('Atsutobob',2, inplace=True)
+    else:
+        features = data
+        labels = pd.DataFrame()
+    
     le = LabelEncoder()
     encoded_col = le.fit_transform(features['x7'])
     features['x7'] = encoded_col
     features = features.fillna(0)
-    labels = labels.fillna('Atsutobob')
-    labels.replace('Bobborg', 'Boborg',inplace=True)
-    labels.replace('Jorggsuto', 'Jorgsuto', inplace=True)
-    labels.replace('Atsutoob', 'Atsutobob', inplace=True)
-    labels.replace('Boborg', 0, inplace=True)
-    labels.replace('Jorgsuto', 1, inplace=True)
-    labels.replace('Atsutobob',2, inplace=True)
+    features = features.drop(['x2', 'x12'], axis=1)
+
     return features, labels, len(data.index)
 
 def handle_data(datadir, training_set, test_set):
     training_data = import_data(datadir+training_set)
     test_data = import_data(datadir+test_set)
-    features, labels, N = clean_data(training_data) # clean data
-    pca_features = compute_PCA(features)            # compute PCA 
-    return pca_features, labels, N, test_data
+    features, labels, N = clean_data(training_data, True)
+    test_features, _, Ntest = clean_data(test_data, False)
+    print(f'Size of test set: {Ntest}')
+    print(f'Size of training set: {N}')
+    features.drop(labels='x10', axis=1)
+    test_features.drop(labels='x10', axis=1)
+    pca_test_features = compute_PCA(test_features) 
+    pca_features = compute_PCA(features)           
+    return pca_features, labels, N, pca_test_features
 
 def compute_PCA(data):
+    # perform PCA on normalized data and see how many dims are kepts
     std_scaler = StandardScaler()
     scaled_data = std_scaler.fit_transform(data)
-    pca = PCA(n_components = 'mle', svd_solver='auto') # find PCA dimension using the MLE
+    pca = PCA(n_components = 'mle', svd_solver='auto')
     pca_data = pca.fit_transform(scaled_data)
-    
+    print(np.shape(pca_data))
     return pca_data
+
+def plot_histograms(pca_features, pca_test_features):
+    # --- Visualize feature distributions --- #
+    for i in range(len(pca_features[1])):
+        plt.figure()
+        train_hist, _ = np.histogram(pca_features[:, i], bins=30, density=True)
+        test_hist, _ = np.histogram(pca_test_features[:, i], bins=30, density=True)
+        plt.hist(pca_features[:,i])
+        plt.title(f'training set, feature: x{i}')
+        
+        plt.figure()
+        plt.hist(pca_test_features[:,i],color='red')
+        plt.title(f'test set, feature: x{i}')    
+        kl_divergence = entropy(train_hist, test_hist)
+        print(f'Entropy between test/training of feature x{i} = {kl_divergence}')
 
 '''
 ------------------------------------
-TODO: Pick some other model (NN?)
+Models
 ------------------------------------
 '''
 
 def ann_routine(features, labels, K1, K2, K3, a1, a2, a3, k1_init, k2_init, k3_init, opt, Nbatch, epochs):
-    one_hot_labels = to_categorical(labels, num_classes=3)
-    input_layer = tf.keras.Input(shape=features.shape[1:])
     
+    input_layer = tf.keras.Input(shape=features.shape[1:])    
     Z1 = keras.layers.Dense(units=K1, activation=a1, use_bias=True,
                             kernel_initializer=k1_init,
                             bias_initializer='zeros',
@@ -88,6 +116,8 @@ def ann_routine(features, labels, K1, K2, K3, a1, a2, a3, k1_init, k2_init, k3_i
                     metrics=['accuracy', 'categorical_crossentropy',
                              keras.metrics.Precision()])
     '''
+    one_hot_labels = to_categorical(labels, num_classes=3)
+
     history = model.fit(x=features, y=one_hot_labels, batch_size=Nbatch,
                      epochs=epochs,
                      verbose=0)
@@ -112,6 +142,7 @@ def svm_routine(train_features, train_labels,
 def compute_accuracy(predicted, true):
     return np.mean(true == predicted)
 
+
 '''
 ------------------------------------
 Main script
@@ -124,7 +155,7 @@ if __name__ == '__main__':
     datadir = '/Users/danvicente/Datalogi/DD2421 - Maskininlärning/programming challenge/'
     training_set = 'TrainOnMe.csv'
     test_set ='EvaluateOnMe.csv'
-    pca_features, labels, N, test_data = handle_data(datadir, training_set, test_set)
+    pca_features, labels, N, pca_test_features = handle_data(datadir, training_set, test_set)
 
     # --- Visualize classes --- #
     print('================ Class distribution ==================')
@@ -133,6 +164,9 @@ if __name__ == '__main__':
     for cl in classes:
         print(f'Amount in class {cl}: {labels.value_counts()[cl]}')
     print('======================================================')
+
+    # --- Visualize feature distributions and measure similarity --- #
+    #plot_histograms(pca_features, pca_test_features)
 
     # --- Hyperparameters --- #
     
@@ -151,10 +185,10 @@ if __name__ == '__main__':
                             opt=opt, Nbatch=NBatch, epochs=epochs)
     
     # --- 10-fold cross validation --- #
-    skf = StratifiedKFold(n_splits = 10, shuffle=True)
+    skf = StratifiedKFold(n_splits = 5, shuffle=True)
     cv_svm = cross_val_score(SVC(kernel=kernel, gamma=gamma), X=pca_features, y=labels, cv=skf, verbose=1)
     print(f'Accuracy of SVM: {np.mean(cv_svm)}') 
-
+    
     acc = []
     for train_indices, test_indices in skf.split(pca_features, labels):
         model.fit(pca_features[train_indices], to_categorical(labels[train_indices], num_classes=3),
@@ -164,14 +198,15 @@ if __name__ == '__main__':
         acc.append(accuracy)
     print(f'Accuracy of ANN: {np.mean(acc)}')
 
-    # --- Train model --- #   
+    # --- Train model --- # 
+    '''
     ann_model = ann_routine(pca_features, labels, K1=K1, K2=K2, K3=K3, a1=a1, a2=a2, a3=a3,
                             k1_init=k1_init, k2_init=k2_init, k3_init=k3_init,
                             opt=opt, Nbatch=NBatch, epochs=epochs)
     ann_model.fit(pca_features, labels, to_categorical(labels[train_indices], num_classes=3),
                   batch_size=NBatch, verbose=1)
-    
+    '''
     # --- Predict --- #
-
+    
     #TODO: NEED TO HANDLE THE test-data as well. 
-    ann_model.predict(test_data)
+    #ann_model.predict(test_data)
