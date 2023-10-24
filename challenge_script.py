@@ -180,7 +180,7 @@ if __name__ == '__main__':
 
     # --- Hyperparameters --- #
     # NN
-    K1 = 70; K2 = 60; K3 = 100
+    K1 = 40; K2 = 30; K3 = 40
     a1 = 'relu'; a2 = 'tanh'; a3 = 'sigmoid'
     k1_init = 'random_uniform'; k2_init = 'random_normal'; k3_init = 'random_uniform'
     epochs = 100; NBatch = 1; learning_rate = 0.001
