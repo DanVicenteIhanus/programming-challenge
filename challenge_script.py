@@ -180,9 +180,9 @@ if __name__ == '__main__':
 
     # --- Hyperparameters --- #
     # NN
-    K1 = 40; K2 = 25; K3 = 30
+    K1 = 70; K2 = 60; K3 = 100
     a1 = 'relu'; a2 = 'tanh'; a3 = 'sigmoid'
-    k1_init = 'random_uniform'; k2_init = 'random_uniform'; k3_init = 'random_uniform'
+    k1_init = 'random_uniform'; k2_init = 'random_normal'; k3_init = 'random_uniform'
     epochs = 100; NBatch = 1; learning_rate = 0.001
     opt = optimizers.Adamax()
     
@@ -193,7 +193,7 @@ if __name__ == '__main__':
                             k1_init=k1_init, k2_init=k2_init, k3_init=k3_init,
                             opt=opt, Nbatch=NBatch, epochs=epochs)
     
-    # --- 10-fold cross validation --- #
+    # --- k-fold cross validation --- #
 
     '''
     skf = StratifiedKFold(n_splits = 10, shuffle=True)
@@ -215,10 +215,10 @@ if __name__ == '__main__':
                         k1_init=k1_init, k2_init=k2_init, k3_init=k3_init,
                         opt=opt, Nbatch=NBatch, epochs=epochs)
     
-    ann_model.fit(pca_features, to_categorical(labels, num_classes=3), verbose=1, batch_size=NBatch)
+    ann_model.fit(pca_features, to_categorical(labels, num_classes=3), verbose=1, batch_size=NBatch, epochs=epochs)
     svm_model = SVC(kernel=kernel, gamma=gamma)
     svm_model.fit(pca_features, labels)
-    
+
     # --- Predict --- #
 
     class_dict = {0: 'Boborg', 1: 'Jorgsuto', 2: 'Atsutobob'}
@@ -226,11 +226,21 @@ if __name__ == '__main__':
     classifications = np.argmax(y_pred, axis=1)
     predicted_classes = [class_dict.get(class_num, 'Unknown') for class_num in classifications]
     svm_y_pred = svm_model.predict(pca_test_features)
+    predicted_classes_svm = [class_dict.get(class_num, 'Unknown') for class_num in svm_y_pred]
+    print(f'# of common classifications between SVM and NN = {len(np.where(svm_y_pred==classifications)[0])}')
+
+    # count and display ocurrences 
+    y_pred_counts = np.bincount(classifications)
+    svm_y_pred_counts = np.bincount(svm_y_pred)
+    for class_label, count in enumerate(y_pred_counts):
+        print(f'Class {class_label} appears {count} times in y_pred')
+    for class_label, count in enumerate(svm_y_pred_counts):
+        print(f'Class {class_label} appears {count} times in svm_y_pred')
     
     # --- save classifications --- #
     with open('predicted_classes.txt', 'w') as output:
         for pred in predicted_classes:
             output.write(str(pred)+'\n')
     with open('svm_predicted_classes.txt', 'w') as output:
-        for pred in svm_y_pred:
+        for pred in predicted_classes_svm:
             output.write(str(pred)+'\n')
